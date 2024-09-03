@@ -1,0 +1,76 @@
+services:
+  hydrusclient:
+    image: ghcr.io/hydrusnetwork/hydrus:latest
+    container_name: hydrusclient
+    restart: unless-stopped
+    environment:
+      - UID=1000
+      - GID=1000
+    volumes:
+      - ./data/hydrus-client:/opt/hydrus/db
+      - /mnt/blockstorage/client_files:/opt/hydrus/db/client_files
+      - ./data/hydrus-import-folder:/import
+#    tmpfs:
+#      - /tmp #optional for SPEEEEEEEEEEEEEEEEEEEEEEEEED and less disk access
+
+  hydrusserver:
+    image: ghcr.io/hydrusnetwork/hydrus:server
+    container_name: hydrusserver
+    restart: unless-stopped
+    volumes:
+      - ./data/hydrus-server:/opt/hydrus/db
+      - ./data/hydrus-import-folder:/import
+
+  hydrus-web:
+    image: ghcr.io/floogulinc/hydrus-web:1.3.0
+    container_name: hydrus-web
+    restart: always
+
+  hydownloader:
+    image: ghcr.io/thatfuckingbird/hydownloader:edge
+    container_name: hydownloader
+    restart: unless-stopped
+    volumes:
+      - ./data/hydownloader-data:/db
+      - ./data/hydrus-client:/hydb
+      - /mnt/blockstorage/client_files:/hydb/client_files
+
+  ftpd:
+    image: stilliard/pure-ftpd
+    container_name: pure-ftpd
+    ports:
+      - 21:21
+      - 30000-30099:30000-30099
+    volumes:
+      - ./data/hydrus-import-folder:/home/hydrus/
+    environment:
+      PUBLICHOST: "localhost"
+      FTP_USER_NAME: hydrus
+      FTP_USER_PASS: hydrus
+      FTP_USER_HOME: /home/hydrus
+      FTP_MAX_CLIENTS: 50
+      FTP_MAX_CONNECTIONS: 25
+      FTP_PASSIVE_PORTS: 30000:30099
+
+  proxy:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - 80:80
+      - 443:443
+    command: "/bin/sh -c 'while :; do sleep 20d & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    volumes:
+      - ./nginx/.htpasswd:/.htpasswd
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./data/letsencrypt:/etc/letsencrypt # Certs
+      - ./data/letsencrypt-acme:/var/lib/letsencrypt # ACME Challenge
+    restart: always
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 10d & wait $${!}; done;'"
+    volumes:
+      - ./data/letsencrypt:/etc/letsencrypt # Certs
+      - ./data/letsencrypt-acme:/var/lib/letsencrypt # ACME Challenge
+    restart: always
